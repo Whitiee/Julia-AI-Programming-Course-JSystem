@@ -358,6 +358,8 @@ The final state is visible to the customer in the chat.
 
 ## 10. User Flow Diagram
 
+### 10.1 End-to-End User Flow
+
 ```mermaid
 flowchart TD
     A["Customer opens app"] --> B["Initial Polish form"]
@@ -389,6 +391,52 @@ flowchart TD
     U -->|Yes| V["Update decision with justification"]
     V --> R
     U -->|No| W["Route to human verification"]
+```
+
+### 10.2 Decision Logic Flow
+
+```mermaid
+flowchart TD
+    A["Start decision"] --> B{"Request type"}
+
+    B -->|Complaint| C["Check complaint reason"]
+    C --> D{"Reason provided?"}
+    D -->|No| E["Block form submission"]
+    D -->|Yes| F["Review image condition description"]
+    F --> G{"Evidence supports defect?"}
+    G -->|Yes| H{"Mechanical damage or normal wear visible?"}
+    G -->|No| I["Reject: insufficient_evidence"]
+    H -->|No| J["Approve complaint"]
+    H -->|Mechanical damage| K["Reject: mechanical_damage_detected"]
+    H -->|Normal wear| L["Reject: usage_or_wear"]
+
+    B -->|Return| M["Review purchase date and image condition"]
+    M --> N{"Product appears unused and resellable?"}
+    N -->|Yes| O["Approve return"]
+    N -->|Visible damage| P["Reject: visible_damage"]
+    N -->|Signs of use| Q["Reject: signs_of_use"]
+    N -->|Not resellable| R["Reject: not_resellable"]
+    N -->|Unclear evidence| S["Ask for another image"]
+
+    F --> T{"Image contradicts customer description?"}
+    T -->|Yes| U["Human verification required"]
+    T -->|No| G
+
+    S --> V{"Third failed image attempt?"}
+    V -->|No| W["Customer uploads another image"]
+    W --> F
+    V -->|Yes| X["In-person verification required"]
+
+    I --> Y["Open chat with decision and next steps"]
+    J --> Y
+    K --> Y
+    L --> Y
+    O --> Y
+    P --> Y
+    Q --> Y
+    R --> Y
+    U --> Y
+    X --> Y
 ```
 
 ---

@@ -12,6 +12,16 @@ System projektowy oparty na live ekstrakcji z `https://github.com` wykonanej 202
 | `../assets/homepage.png` | Screenshot referencyjny strony glownej |
 | `../assets/github-extracted-styles.json` | Surowy zapis stylow z Playwright |
 
+## Design Wireframes
+
+Te wireframe'y sa referencja funkcjonalnego ukladu aplikacji. Traktuj je jako szablony rozmieszczenia elementow i przebiegu procesu, nie jako finalny projekt wizualny.
+
+| Plik | Krok aplikacji | Uzycie |
+|---|---|---|
+| `../assets/wireframes/wireframe-step-01-initial-form.png` | Krok 1 - formularz zgloszenia | Ekran startowy z wyborem typu sprawy, danymi sprzetu, data zakupu, powodem i jednym zdjeciem |
+| `../assets/wireframes/wireframe-step-02-agent-decision-chat.png` | Krok 2 - pierwsza odpowiedz agenta | Widok po analizie, z podsumowaniem zgloszenia i pierwsza wiadomoscia czatu zawierajaca decyzje, uzasadnienie i nastepne kroki |
+| `../assets/wireframes/wireframe-step-03-active-chat-history.png` | Krok 3 - aktywna rozmowa | Widok rozmowy z historia wiadomosci, zakwestionowaniem decyzji i aktualizacja decyzji lub przekazaniem do weryfikacji |
+
 ## Colors
 
 | Token | Hex / value | Uzycie |

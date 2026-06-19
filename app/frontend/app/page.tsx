@@ -1,4 +1,4 @@
-const categories = ["Laptop", "Smartfon", "Monitor", "Akcesoria"];
+import { CaseForm } from "@/components/case-form/case-form";
 
 export default function Home() {
   return (
@@ -25,10 +25,16 @@ export default function Home() {
             </div>
           </div>
           <nav aria-label="Nawigacja główna" className="flex gap-2 text-sm">
-            <a className="rounded-md px-2 py-1 text-onDark hover:bg-white/10" href="#formularz">
+            <a
+              className="rounded-md px-2 py-1 text-onDark hover:bg-white/10"
+              href="#formularz"
+            >
               Formularz
             </a>
-            <a className="rounded-md px-2 py-1 text-onDark hover:bg-white/10" href="#status">
+            <a
+              className="rounded-md px-2 py-1 text-onDark hover:bg-white/10"
+              href="#status"
+            >
               Status
             </a>
           </nav>
@@ -60,43 +66,7 @@ export default function Home() {
           <div className="border-b border-borderDefault px-4 py-3">
             <h2 className="text-xl font-semibold leading-8">Nowe zgłoszenie</h2>
           </div>
-          <div className="grid gap-4 p-4">
-            <div>
-              <p className="mb-2 text-sm font-medium">Typ sprawy</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <button className="min-h-[43px] rounded-md border border-transparent bg-success px-5 py-2 text-base leading-6 text-white">
-                  Reklamacja
-                </button>
-                <button className="min-h-[43px] rounded-md border border-borderDefault bg-subtle px-5 py-2 text-base leading-6 text-foreground">
-                  Zwrot
-                </button>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm font-medium">
-                Kategoria sprzętu
-                <select className="rounded-md border border-borderDefault bg-canvas px-3 py-2 font-normal">
-                  {categories.map((category) => (
-                    <option key={category}>{category}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-medium">
-                Model lub nazwa
-                <input
-                  className="rounded-md border border-borderDefault bg-canvas px-3 py-2 font-normal"
-                  placeholder="np. Monitor 27 cali"
-                  type="text"
-                />
-              </label>
-            </div>
-
-            <div className="rounded-md border border-dashed border-borderDefault bg-subtle px-4 py-5 text-sm text-muted">
-              Miejsce na przesłanie jednego zdjęcia sprzętu pojawi się w
-              kolejnym kroku implementacji.
-            </div>
-          </div>
+          <CaseForm />
         </div>
 
         <aside

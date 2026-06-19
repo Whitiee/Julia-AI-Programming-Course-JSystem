@@ -1,4 +1,4 @@
-import { CaseForm } from "@/components/case-form/case-form";
+import { SessionWorkspace } from "@/components/session-workspace/session-workspace";
 
 export default function Home() {
   return (
@@ -58,33 +58,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-4 px-4 py-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-        <div
-          id="formularz"
-          className="rounded-md border border-borderDefault bg-canvas shadow-card"
-        >
-          <div className="border-b border-borderDefault px-4 py-3">
-            <h2 className="text-xl font-semibold leading-8">Nowe zgłoszenie</h2>
-          </div>
-          <CaseForm />
-        </div>
-
-        <aside
-          id="status"
-          className="rounded-md border border-borderDefault bg-canvas"
-        >
-          <div className="border-b border-borderDefault px-4 py-3">
-            <h2 className="text-xl font-semibold leading-8">Status sprawy</h2>
-          </div>
-          <div className="grid gap-3 p-4 text-sm text-muted">
-            <p>Brak aktywnej sesji.</p>
-            <p>
-              Po wysłaniu formularza tutaj pojawi się decyzja, uzasadnienie i
-              historia rozmowy.
-            </p>
-          </div>
-        </aside>
-      </section>
+      <SessionWorkspace />
     </main>
   );
 }

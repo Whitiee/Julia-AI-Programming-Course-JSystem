@@ -32,6 +32,30 @@ export type ApiErrorResponse = {
   traceId?: string;
 };
 
+export type DecisionResponse = {
+  status: "approved" | "rejected" | "human_verification_required" | string;
+  rejectionType?: string | null;
+  rejectionReasonPl?: string | null;
+  justificationPl: string;
+  nextStepsPl: string;
+  ruleCategory: string;
+  version: number;
+};
+
+export type ImageRetryResponse = {
+  reasonPl: string;
+  remainingAttempts: number;
+};
+
+export type ChatMessageResponse = {
+  messageId: string;
+  role: "SYSTEM" | "CUSTOMER" | string;
+  contentPl: string;
+  sequenceNumber: number;
+  messageType: "INITIAL_DECISION" | "FOLLOW_UP" | "DECISION_UPDATE" | string;
+  createdAt: string;
+};
+
 export type SessionResponse = {
   sessionId: string;
   requestType?: RequestType;
@@ -39,19 +63,19 @@ export type SessionResponse = {
   terminalState?: string;
   imageAttemptCount?: number;
   remainingImageAttempts?: number;
-  latestDecision?: unknown;
-  imageRetry?: unknown;
-  messages?: unknown[];
+  latestDecision?: DecisionResponse | null;
+  imageRetry?: ImageRetryResponse | null;
+  messages?: ChatMessageResponse[];
 };
 
-type CreateSessionOptions = {
+type RequestOptions = {
   fetcher?: typeof fetch;
   apiBaseUrl?: string;
 };
 
 export async function createSession(
   input: CreateSessionInput,
-  options: CreateSessionOptions = {}
+  options: RequestOptions = {}
 ): Promise<SessionResponse> {
   const fetcher = options.fetcher ?? fetch;
   const apiBaseUrl =
@@ -77,6 +101,76 @@ export async function createSession(
   }
 
   return body as SessionResponse;
+}
+
+export async function getSession(
+  sessionId: string,
+  options: RequestOptions = {}
+): Promise<SessionResponse> {
+  const response = await request(`/api/sessions/${sessionId}`, {
+    method: "GET"
+  }, options);
+
+  return response as SessionResponse;
+}
+
+export async function retryImageAttempt(
+  sessionId: string,
+  image: File,
+  options: RequestOptions = {}
+): Promise<SessionResponse> {
+  const formData = new FormData();
+  formData.set("image", image);
+
+  const response = await request(
+    `/api/sessions/${sessionId}/image-attempts`,
+    {
+      method: "POST",
+      body: formData
+    },
+    options
+  );
+
+  return response as SessionResponse;
+}
+
+export async function postChatMessage(
+  sessionId: string,
+  contentPl: string,
+  options: RequestOptions = {}
+): Promise<SessionResponse> {
+  const response = await request(
+    `/api/sessions/${sessionId}/chat/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ contentPl })
+    },
+    options
+  );
+
+  return response as SessionResponse;
+}
+
+async function request(
+  path: string,
+  init: RequestInit,
+  options: RequestOptions
+): Promise<unknown> {
+  const fetcher = options.fetcher ?? fetch;
+  const apiBaseUrl =
+    options.apiBaseUrl ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+  const response = await fetcher(`${apiBaseUrl}${path}`, init);
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw normalizeApiError(body);
+  }
+
+  return body;
 }
 
 function normalizeApiError(body: unknown): ApiErrorResponse {

@@ -11,6 +11,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.14.23",
     "next": "^16.2.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

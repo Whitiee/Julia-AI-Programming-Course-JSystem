@@ -76,11 +76,7 @@ class SessionService {
 
     SessionResponse createImageAttempt(UUID sessionId, MultipartFile image) {
         validateImage(image);
-        throw new ApiException(
-                ApiErrorCode.SESSION_STATE_CONFLICT,
-                HttpStatus.CONFLICT,
-                "Nie można wykonać tej operacji dla aktualnego stanu zgłoszenia."
-        );
+        return submissionPipeline.submitImageAttempt(sessionId, image);
     }
 
     SessionResponse getSession(UUID sessionId) {

@@ -4,6 +4,8 @@ import com.jsystems.bestservice.caseintake.CaseSubmissionPipeline;
 import com.jsystems.bestservice.caseintake.api.ChatMessageResponse;
 import com.jsystems.bestservice.caseintake.api.DecisionResponse;
 import com.jsystems.bestservice.caseintake.api.SessionResponse;
+import com.jsystems.bestservice.common.api.ApiErrorCode;
+import com.jsystems.bestservice.common.api.ApiException;
 import com.jsystems.bestservice.persistence.ServiceSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -79,6 +81,11 @@ class ApiContractTests {
                         "INITIAL_DECISION",
                         Instant.now()
                 ))
+        ));
+        when(caseSubmissionPipeline.submitImageAttempt(any(), any())).thenThrow(new ApiException(
+                ApiErrorCode.SESSION_STATE_CONFLICT,
+                org.springframework.http.HttpStatus.CONFLICT,
+                "Nie można wykonać tej operacji dla aktualnego stanu zgłoszenia."
         ));
     }
 

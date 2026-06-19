@@ -5,6 +5,7 @@ import com.jsystems.bestservice.caseintake.api.ChatMessageResponse;
 import com.jsystems.bestservice.caseintake.api.DecisionResponse;
 import com.jsystems.bestservice.caseintake.api.ImageRetryResponse;
 import com.jsystems.bestservice.caseintake.api.SessionResponse;
+import com.jsystems.bestservice.caseintake.api.SessionResponseMapper;
 import com.jsystems.bestservice.common.api.ApiErrorCode;
 import com.jsystems.bestservice.common.api.ApiException;
 import com.jsystems.bestservice.decision.DecisionInput;
@@ -31,6 +32,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 @Service
 public class CaseSubmissionPipeline {
@@ -43,17 +45,97 @@ public class CaseSubmissionPipeline {
     private final ServiceSessionRepository sessionRepository;
     private final ImageAnalysisAiClient aiClient;
     private final DecisionRuleService decisionRuleService;
+    private final SessionResponseMapper responseMapper;
 
     public CaseSubmissionPipeline(
             ImageStorageService storageService,
             ServiceSessionRepository sessionRepository,
             ImageAnalysisAiClient aiClient,
-            DecisionRuleService decisionRuleService
+            DecisionRuleService decisionRuleService,
+            SessionResponseMapper responseMapper
     ) {
         this.storageService = storageService;
         this.sessionRepository = sessionRepository;
         this.aiClient = aiClient;
         this.decisionRuleService = decisionRuleService;
+        this.responseMapper = responseMapper;
+    }
+
+    @Transactional
+    public SessionResponse submitImageAttempt(UUID sessionId, org.springframework.web.multipart.MultipartFile imageFile) {
+        ServiceSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ApiException(
+                        ApiErrorCode.SESSION_NOT_FOUND,
+                        HttpStatus.NOT_FOUND,
+                        "Nie znaleziono zgłoszenia."
+                ));
+        if (session.getStatus() != SessionStatus.IMAGE_RETRY_REQUIRED) {
+            throw new ApiException(
+                    ApiErrorCode.SESSION_STATE_CONFLICT,
+                    HttpStatus.CONFLICT,
+                    "Nie można wykonać tej operacji dla aktualnego stanu zgłoszenia."
+            );
+        }
+
+        int attemptNumber = session.getImageAttemptCount() + 1;
+        StoredImageFile storedImage = storageService.store(sessionId, attemptNumber, imageFile);
+        try {
+            UploadedImage image = UploadedImage.create(
+                    session,
+                    attemptNumber,
+                    storedImage.originalFilename(),
+                    storedImage.contentType(),
+                    storedImage.sizeBytes(),
+                    storedImage.relativePath(),
+                    true,
+                    null
+            );
+            CaseSubmissionCommand command = new CaseSubmissionCommand(
+                    session.getId(),
+                    session.getRequestType(),
+                    session.getEquipmentCategory(),
+                    session.getEquipmentNameOrModel(),
+                    session.getPurchaseDate(),
+                    session.getReason() == null ? "" : session.getReason(),
+                    imageFile,
+                    attemptNumber
+            );
+            ImageAnalysisResult analysisResult = analyze(command);
+            image.markAnalysisResult(analysisResult.isEvaluable(), analysisResult.notEvaluableReasonPl());
+            attachAnalysis(image, analysisResult);
+
+            if (!analysisResult.isEvaluable() && attemptNumber < MAX_IMAGE_ATTEMPTS) {
+                session.markImageRetryRequired();
+                return responseMapper.toResponse(sessionRepository.save(session));
+            }
+
+            DecisionResult decision = decisionRuleService.decideInitial(
+                    new DecisionInput(session.getRequestType(), session.getPurchaseDate(), session.getReason()),
+                    toObservations(analysisResult, attemptNumber)
+            );
+            DecisionRecord decisionRecord = createDecisionRecord(session, decision, 1, null);
+            ChatMessage.create(
+                    session,
+                    ChatRole.SYSTEM,
+                    firstSystemMessage(decision),
+                    nextMessageSequence(session),
+                    MessageType.INITIAL_DECISION
+            );
+
+            if (decision.terminalState() == TerminalState.IN_PERSON_VERIFICATION_REQUIRED) {
+                session.markClosed(decision.terminalState());
+            } else {
+                session.markDecided(decision.terminalState());
+            }
+
+            return responseMapper.toResponse(sessionRepository.save(session));
+        } catch (ApiException exception) {
+            storageService.delete(storedImage.relativePath());
+            throw exception;
+        } catch (RuntimeException exception) {
+            storageService.delete(storedImage.relativePath());
+            throw exception;
+        }
     }
 
     @Transactional
@@ -81,19 +163,7 @@ public class CaseSubmissionPipeline {
 
             ImageAnalysisResult analysisResult = analyze(command);
             image.markAnalysisResult(analysisResult.isEvaluable(), analysisResult.notEvaluableReasonPl());
-            ImageAnalysis.create(
-                    image,
-                    analysisResult.visibleDamage(),
-                    analysisResult.visibleDefectIndicators(),
-                    analysisResult.visibleUsageSigns(),
-                    analysisResult.possibleCauseIndicators(),
-                    analysisResult.missingOrAlteredVisibleParts(),
-                    analysisResult.resaleCondition().name().toLowerCase(Locale.ROOT),
-                    !analysisResult.isEvaluable(),
-                    analysisResult.summaryPl(),
-                    analysisResult.model(),
-                    analysisResult.promptVersion()
-            );
+            attachAnalysis(image, analysisResult);
 
             if (!analysisResult.isEvaluable() && command.attemptNumber() < MAX_IMAGE_ATTEMPTS) {
                 session.markImageRetryRequired();
@@ -105,19 +175,7 @@ public class CaseSubmissionPipeline {
                     new DecisionInput(command.requestType(), command.purchaseDate(), command.reason()),
                     toObservations(analysisResult, command.attemptNumber())
             );
-            DecisionRecord decisionRecord = DecisionRecord.create(
-                    session,
-                    1,
-                    decision.status(),
-                    decision.rejectionType(),
-                    decision.rejectionReasonPl(),
-                    decision.justificationPl(),
-                    decision.nextStepsPl(),
-                    decision.ruleCategory(),
-                    null,
-                    DECISION_MODEL,
-                    DECISION_PROMPT_VERSION
-            );
+            DecisionRecord decisionRecord = createDecisionRecord(session, decision, 1, null);
             ChatMessage systemMessage = ChatMessage.create(
                     session,
                     ChatRole.SYSTEM,
@@ -153,6 +211,50 @@ public class CaseSubmissionPipeline {
                     "Nie udało się przeanalizować zdjęcia. Spróbuj ponownie za chwilę."
             );
         }
+    }
+
+    private ImageAnalysis attachAnalysis(UploadedImage image, ImageAnalysisResult analysisResult) {
+        return ImageAnalysis.create(
+                image,
+                analysisResult.visibleDamage(),
+                analysisResult.visibleDefectIndicators(),
+                analysisResult.visibleUsageSigns(),
+                analysisResult.possibleCauseIndicators(),
+                analysisResult.missingOrAlteredVisibleParts(),
+                analysisResult.resaleCondition().name().toLowerCase(Locale.ROOT),
+                !analysisResult.isEvaluable(),
+                analysisResult.summaryPl(),
+                analysisResult.model(),
+                analysisResult.promptVersion()
+        );
+    }
+
+    private DecisionRecord createDecisionRecord(
+            ServiceSession session,
+            DecisionResult decision,
+            int version,
+            UUID previousDecisionId
+    ) {
+        return DecisionRecord.create(
+                session,
+                version,
+                decision.status(),
+                decision.rejectionType(),
+                decision.rejectionReasonPl(),
+                decision.justificationPl(),
+                decision.nextStepsPl(),
+                decision.ruleCategory(),
+                previousDecisionId,
+                DECISION_MODEL,
+                DECISION_PROMPT_VERSION
+        );
+    }
+
+    private int nextMessageSequence(ServiceSession session) {
+        return session.getChatMessages().stream()
+                .mapToInt(ChatMessage::getSequenceNumber)
+                .max()
+                .orElse(0) + 1;
     }
 
     private ImageObservations toObservations(ImageAnalysisResult result, int attemptNumber) {

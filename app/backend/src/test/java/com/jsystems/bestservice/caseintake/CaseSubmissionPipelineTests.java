@@ -2,6 +2,7 @@ package com.jsystems.bestservice.caseintake;
 
 import com.jsystems.bestservice.ai.FakeImageAnalysisAiClient;
 import com.jsystems.bestservice.ai.ImageAnalysisAiClient;
+import com.jsystems.bestservice.caseintake.api.SessionResponseMapper;
 import com.jsystems.bestservice.caseintake.api.SessionResponse;
 import com.jsystems.bestservice.common.api.ApiErrorCode;
 import com.jsystems.bestservice.common.api.ApiException;
@@ -11,12 +12,14 @@ import com.jsystems.bestservice.persistence.EquipmentCategory;
 import com.jsystems.bestservice.persistence.RequestType;
 import com.jsystems.bestservice.persistence.ServiceSession;
 import com.jsystems.bestservice.persistence.ServiceSessionRepository;
+import com.jsystems.bestservice.persistence.UploadedImage;
 import com.jsystems.bestservice.storage.ImageStorageService;
 import com.jsystems.bestservice.storage.StoredImageFile;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,7 +93,44 @@ class CaseSubmissionPipelineTests {
         assertThat(response.imageRetry()).isNull();
     }
 
+    @Test
+    void retryImageForUnclearSessionIncrementsAttemptCount() {
+        ServiceSession session = unclearRetrySession(1);
+        CaseSubmissionPipeline pipeline = pipeline(new FakeImageAnalysisAiClient(), session);
+
+        SessionResponse response = pipeline.submitImageAttempt(
+                session.getId(),
+                image("unclear-equipment.png")
+        );
+
+        assertThat(response.status()).isEqualTo("IMAGE_RETRY_REQUIRED");
+        assertThat(response.imageAttemptCount()).isEqualTo(2);
+        assertThat(response.remainingImageAttempts()).isEqualTo(1);
+        assertThat(session.getUploadedImages()).hasSize(2);
+    }
+
+    @Test
+    void thirdRetryUnclearImageMarksInPersonVerificationRequired() {
+        ServiceSession session = unclearRetrySession(2);
+        CaseSubmissionPipeline pipeline = pipeline(new FakeImageAnalysisAiClient(), session);
+
+        SessionResponse response = pipeline.submitImageAttempt(
+                session.getId(),
+                image("unclear-equipment.png")
+        );
+
+        assertThat(response.status()).isEqualTo("CLOSED");
+        assertThat(response.terminalState()).isEqualTo("IN_PERSON_VERIFICATION_REQUIRED");
+        assertThat(response.latestDecision().ruleCategory())
+                .isEqualTo("image.in_person_verification_after_three_attempts");
+        assertThat(response.messages()).hasSize(1);
+    }
+
     private static CaseSubmissionPipeline pipeline(ImageAnalysisAiClient aiClient) {
+        return pipeline(aiClient, null);
+    }
+
+    private static CaseSubmissionPipeline pipeline(ImageAnalysisAiClient aiClient, ServiceSession existingSession) {
         ImageStorageService storageService = mock(ImageStorageService.class);
         ServiceSessionRepository sessionRepository = mock(ServiceSessionRepository.class);
         when(storageService.store(any(), anyInt(), any()))
@@ -101,12 +141,14 @@ class CaseSubmissionPipelineTests {
                         "2026/06/19/session/image.png"
                 ));
         when(sessionRepository.save(any(ServiceSession.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(sessionRepository.findById(any())).thenReturn(Optional.ofNullable(existingSession));
 
         return new CaseSubmissionPipeline(
                 storageService,
                 sessionRepository,
                 aiClient,
-                new DecisionRuleService()
+                new DecisionRuleService(),
+                new SessionResponseMapper()
         );
     }
 
@@ -134,5 +176,31 @@ class CaseSubmissionPipelineTests {
                 "image/png",
                 "fake-image".getBytes()
         );
+    }
+
+    private static ServiceSession unclearRetrySession(int attempts) {
+        ServiceSession session = ServiceSession.create(
+                UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                RequestType.RETURN,
+                EquipmentCategory.LAPTOP,
+                "ThinkPad T14",
+                LocalDate.of(2026, 6, 1),
+                ""
+        );
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            UploadedImage uploadedImage = UploadedImage.create(
+                    session,
+                    attempt,
+                    "unclear-equipment.png",
+                    "image/png",
+                    10L,
+                    "2026/06/19/session/%s.png".formatted(attempt),
+                    false,
+                    "Zdjęcie jest nieczytelne."
+            );
+            uploadedImage.markAnalysisResult(false, "Zdjęcie jest nieczytelne.");
+        }
+        session.markImageRetryRequired();
+        return session;
     }
 }

@@ -178,6 +178,10 @@ public class DecisionRecord {
         return ruleCategory;
     }
 
+    public UUID getPreviousDecisionId() {
+        return previousDecisionId;
+    }
+
     public String getModel() {
         return model;
     }

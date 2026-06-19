@@ -7,6 +7,8 @@ import com.jsystems.bestservice.common.api.ApiException;
 import com.jsystems.bestservice.common.config.UploadProperties;
 import com.jsystems.bestservice.persistence.EquipmentCategory;
 import com.jsystems.bestservice.persistence.RequestType;
+import com.jsystems.bestservice.persistence.ServiceSession;
+import com.jsystems.bestservice.persistence.ServiceSessionRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.unit.DataSize;
@@ -43,10 +45,19 @@ class SessionService {
 
     private final UploadProperties uploadProperties;
     private final CaseSubmissionPipeline submissionPipeline;
+    private final ServiceSessionRepository sessionRepository;
+    private final SessionResponseMapper responseMapper;
 
-    SessionService(UploadProperties uploadProperties, CaseSubmissionPipeline submissionPipeline) {
+    SessionService(
+            UploadProperties uploadProperties,
+            CaseSubmissionPipeline submissionPipeline,
+            ServiceSessionRepository sessionRepository,
+            SessionResponseMapper responseMapper
+    ) {
         this.uploadProperties = uploadProperties;
         this.submissionPipeline = submissionPipeline;
+        this.sessionRepository = sessionRepository;
+        this.responseMapper = responseMapper;
     }
 
     SessionResponse createSession(CreateSessionRequest request) {
@@ -73,11 +84,13 @@ class SessionService {
     }
 
     SessionResponse getSession(UUID sessionId) {
-        throw new ApiException(
-                ApiErrorCode.SESSION_NOT_FOUND,
-                HttpStatus.NOT_FOUND,
-                "Nie znaleziono zgłoszenia."
-        );
+        ServiceSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ApiException(
+                        ApiErrorCode.SESSION_NOT_FOUND,
+                        HttpStatus.NOT_FOUND,
+                        "Nie znaleziono zgłoszenia."
+                ));
+        return responseMapper.toResponse(session);
     }
 
     private void validateSessionRequest(CreateSessionRequest request) {

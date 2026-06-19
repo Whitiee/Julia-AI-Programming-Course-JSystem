@@ -26,7 +26,7 @@ export class CaseFlowPage {
   }
 
   async submitCase(data: CaseFormData) {
-    await this.page.getByRole("button", { name: data.requestType }).click();
+    await this.page.getByRole("radio", { name: data.requestType }).click();
     await this.page
       .getByLabel(/kategoria sprzętu/i)
       .selectOption({ label: new RegExp(data.category, "i") });
